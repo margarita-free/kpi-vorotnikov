@@ -91,13 +91,17 @@
   <!-- SETTINGS -->
   <div class="panel">
     <h3>План месяца</h3>
+    <div style="background:rgba(69,178,230,.1);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);margin-bottom:14px">
+      <b style="color:var(--text)">1-й месяц — без рекламы, режим наблюдения.</b>
+      План по числу <u>не ставим</u> — копим данные, и в конце 1-й недели определим реальный план на месяц по факту. Пока поле «План» оставь пустым (0) — светофор включится, когда впишем план.
+    </div>
     <div class="row">
       <div><label>Главная метрика плана</label>
         <select id="metricName">
           <option value="Переходы на сайт из соцсетей (UTM)">Переходы на сайт (UTM)</option>
           <option value="Заявки из соцсетей">Заявки из соцсетей</option>
         </select></div>
-      <div><label>План на месяц</label><input type="number" id="planMonth" value="300"></div>
+      <div><label>План на месяц</label><input type="number" id="planMonth" value="0" placeholder="определим по 1-й неделе"></div>
       <div><label>Дней в месяце</label><input type="number" id="daysMonth" value="30"></div>
       <div style="align-self:end"><button onclick="saveSettings();render()">Сохранить план</button></div>
     </div>
@@ -172,7 +176,7 @@ function load(){
   catch(e){ return defState(); }
 }
 function defState(){
-  return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:300, daysMonth:30}, days:[] };
+  return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:0, daysMonth:30}, days:[] };
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
 
