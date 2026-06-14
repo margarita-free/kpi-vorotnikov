@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI соцсети · Воротников</title>
+<style>
+  :root{
+    --accent:#45B2E6; --accent2:#DB6FA0;
+    --bg:#0f1720; --card:#18222e; --line:#27323f; --muted:#8b9aa8; --text:#eaf1f7;
+    --green:#2ecc71; --yellow:#f1c40f; --red:#e74c3c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Golos Text',-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  a{color:var(--accent)}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  h1{font-size:24px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+
+  /* LOGIN */
+  #login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:10}
+  .lcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px;width:340px;text-align:center}
+  .lcard h2{margin:0 0 4px}
+  .lcard p{color:var(--muted);font-size:13px;margin:0 0 20px}
+  input,select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0d141c;color:var(--text);font-size:15px;margin-bottom:10px;font-family:inherit}
+  button{cursor:pointer;border:none;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;font-family:inherit;background:var(--accent);color:#06222e}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);font-weight:500}
+  .err{color:var(--red);font-size:13px;min-height:18px}
+
+  /* CARDS */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .card .big{font-size:32px;font-weight:700;margin-top:6px}
+  .card .meta{font-size:12px;color:var(--muted);margin-top:4px}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+  .pill.g{background:rgba(46,204,113,.15);color:var(--green)}
+  .pill.y{background:rgba(241,196,15,.15);color:var(--yellow)}
+  .pill.r{background:rgba(231,76,60,.15);color:var(--red)}
+
+  .bar{height:10px;border-radius:999px;background:#0d141c;overflow:hidden;margin-top:10px}
+  .bar > span{display:block;height:100%}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:20px}
+  .panel h3{margin:0 0 14px;font-size:16px}
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .row label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .scroll{overflow-x:auto}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .small{font-size:12px;color:var(--muted)}
+  canvas{width:100%;height:200px}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:720px){.twocol{grid-template-columns:1fr}}
+  .actions{font-size:13px;line-height:1.6}
+  .legend{font-size:12px;color:var(--muted);margin-top:8px}
+  .legend b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login">
+  <div class="lcard">
+    <h2>KPI · Соцсети</h2>
+    <p>Клиника доктора Воротникова</p>
+    <input type="password" id="pwd" placeholder="Пароль" autocomplete="current-password">
+    <button style="width:100%" onclick="tryLogin()">Войти</button>
+    <div class="err" id="lerr"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="wrap" id="app" style="display:none">
+  <div class="topbar">
+    <div>
+      <h1>KPI соцсетей — ежедневная отслежка</h1>
+      <div class="sub">Метод Уколовой · dynamic forecast + светофор · <span id="period"></span></div>
+    </div>
+    <div>
+      <button class="ghost" onclick="exportJSON()">Экспорт</button>
+      <button class="ghost" onclick="logout()">Выйти</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="panel">
+    <h3>План месяца</h3>
+    <div class="row">
+      <div><label>Главная метрика плана</label>
+        <select id="metricName">
+          <option value="Переходы на сайт из соцсетей (UTM)">Переходы на сайт (UTM)</option>
+          <option value="Заявки из соцсетей">Заявки из соцсетей</option>
+        </select></div>
+      <div><label>План на месяц</label><input type="number" id="planMonth" value="300"></div>
+      <div><label>Дней в месяце</label><input type="number" id="daysMonth" value="30"></div>
+      <div style="align-self:end"><button onclick="saveSettings();render()">Сохранить план</button></div>
+    </div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="grid" id="cards"></div>
+
+  <!-- CHART -->
+  <div class="panel">
+    <h3>Накопительный темп vs план <span class="small" id="forecastInline"></span></h3>
+    <canvas id="chart"></canvas>
+    <div class="legend"><b style="color:var(--accent)">━</b> факт накопительно &nbsp; <b style="color:var(--muted)">┄</b> идеальный темп к плану &nbsp; <b style="color:var(--accent2)">━</b> прогноз (forecast)</div>
+  </div>
+
+  <!-- ADD DAY -->
+  <div class="panel">
+    <h3>Внести день</h3>
+    <div class="row">
+      <div><label>Дата</label><input type="date" id="d_date"></div>
+      <div><label id="lbl_main">Переходы за день</label><input type="number" id="d_main" placeholder="0"></div>
+      <div><label>Заявки за день</label><input type="number" id="d_leads" placeholder="0"></div>
+      <div><label>Постов</label><input type="number" id="d_posts" placeholder="0"></div>
+      <div><label>Охват</label><input type="number" id="d_reach" placeholder="0"></div>
+      <div><label>+ подписчиков</label><input type="number" id="d_subs" placeholder="0"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div style="grid-column:1/-1"><label>Action point на завтра (1 ключевое действие)</label><input id="d_action" placeholder="напр. закрепить пост с оффером + ссылкой на запись"></div>
+    </div>
+    <div style="margin-top:12px"><button onclick="addDay()">Добавить день</button></div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="panel">
+    <div class="topbar"><h3 style="margin:0">Журнал по дням</h3><span class="small">🟥 &lt;80% · 🟨 80–99% · 🟩 100%+ от плана дня</span></div>
+    <div class="scroll">
+      <table id="log">
+        <thead><tr>
+          <th>Дата</th><th>Факт дня</th><th>План дня</th><th>% дня</th><th>Накоп.</th><th>Остаток</th><th>Forecast</th><th>Заявки</th><th>Посты</th><th>Action point</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DAILY DISCIPLINE -->
+  <div class="panel">
+    <h3>3 вывода дня (метод Уколовой)</h3>
+    <div class="twocol">
+      <div class="actions">
+        <p><b style="color:var(--accent)">А. Фокус 80/20.</b> Завтра 80% времени — на действия, ведущие трафик/заявки (рилс с оффером, закреп со ссылкой, ответы лидам), а не на «причёсывание» профиля.</p>
+        <p><b style="color:var(--accent)">Б. Делегирование.</b> Рутину (нарезка, кросспостинг, дизайн) — передать/автоматизировать. Время эксперта — на смыслы и съёмку.</p>
+      </div>
+      <div class="actions">
+        <p><b style="color:var(--accent2)">В. Коррекция курса.</b> Если forecast &lt; план — завтра 1–2 agressive-шага: прямой оффер в закреп, прогрев в сторис, короткое видео-ответ врача; со 2-го месяца — расширить аудиторию в VK/ОК таргете.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="small" style="margin-top:24px">Данные хранятся в этом браузере (localStorage). «Экспорт» сохраняет копию в файл. Связано с <a href="План-запуска-соцсетей.md">планом запуска</a> и <a href="KPI-отслежка-Уколова.md">методикой</a>.</div>
+</div>
+
+<script>
+// ---- CONFIG ----
+const PASSWORD = "vorotnikov2026";   // смени на свой
+const KEY = "kpi_vorotnikov_v1";
+
+// ---- STATE ----
+let state = load();
+function load(){
+  try{ return JSON.parse(localStorage.getItem(KEY)) || defState(); }
+  catch(e){ return defState(); }
+}
+function defState(){
+  return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:300, daysMonth:30}, days:[] };
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+// ---- LOGIN ----
+function tryLogin(){
+  const v = document.getElementById('pwd').value;
+  if(v === PASSWORD){
+    sessionStorage.setItem('kpi_auth','1');
+    showApp();
+  } else {
+    document.getElementById('lerr').textContent = "Неверный пароль";
+  }
+}
+function logout(){ sessionStorage.removeItem('kpi_auth'); location.reload(); }
+document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
+
+function showApp(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+  // hydrate settings
+  document.getElementById('metricName').value = state.settings.metricName;
+  document.getElementById('planMonth').value = state.settings.planMonth;
+  document.getElementById('daysMonth').value = state.settings.daysMonth;
+  // default date = today
+  const t = new Date(); document.getElementById('d_date').value = t.toISOString().slice(0,10);
+  render();
+}
+if(sessionStorage.getItem('kpi_auth')==='1') showApp();
+
+// ---- SETTINGS ----
+function saveSettings(){
+  state.settings.metricName = document.getElementById('metricName').value;
+  state.settings.planMonth = +document.getElementById('planMonth').value || 0;
+  state.settings.daysMonth = +document.getElementById('daysMonth').value || 30;
+  save();
+}
+
+// ---- ADD / DELETE DAY ----
+function addDay(){
+  const d = {
+    date: document.getElementById('d_date').value,
+    main: +document.getElementById('d_main').value || 0,
+    leads:+document.getElementById('d_leads').value || 0,
+    posts:+document.getElementById('d_posts').value || 0,
+    reach:+document.getElementById('d_reach').value || 0,
+    subs: +document.getElementById('d_subs').value || 0,
+    action: document.getElementById('d_action').value.trim()
+  };
+  if(!d.date){ alert('Укажи дату'); return; }
+  // replace if same date exists
+  const i = state.days.findIndex(x=>x.date===d.date);
+  if(i>=0) state.days[i]=d; else state.days.push(d);
+  state.days.sort((a,b)=>a.date.localeCompare(b.date));
+  save();
+  // clear inputs (keep date)
+  ['d_main','d_leads','d_posts','d_reach','d_subs','d_action'].forEach(id=>document.getElementById(id).value='');
+  render();
+}
+function delDay(date){
+  if(!confirm('Удалить день '+date+'?')) return;
+  state.days = state.days.filter(x=>x.date!==date);
+  save(); render();
+}
+
+// ---- CALC ----
+function calc(){
+  const plan = state.settings.planMonth;
+  const dim = state.settings.daysMonth;
+  let cum=0; const rows=[];
+  const daysPassed = state.days.length;
+  state.days.forEach((d,idx)=>{
+    cum += d.main;
+    const remaining = Math.max(plan - cum, 0);
+    const daysLeft = Math.max(dim - (idx+1), 0);
+    const planDay = daysLeft>0 ? Math.ceil(remaining/daysLeft) : remaining;
+    // план дня для % считаем как ровный темп до текущего дня
+    const evenPlanDay = plan/dim;
+    const pct = evenPlanDay>0 ? Math.round((d.main/evenPlanDay)*100) : 0;
+    const forecast = daysPassed>0 ? Math.round((cum/(idx+1))*dim) : 0;
+    rows.push({...d, cum, remaining, planDay, pct, forecast});
+  });
+  const lastForecast = rows.length? rows[rows.length-1].forecast : 0;
+  const totalLeads = state.days.reduce((s,d)=>s+d.leads,0);
+  const totalSubs = state.days.reduce((s,d)=>s+d.subs,0);
+  const totalPosts = state.days.reduce((s,d)=>s+d.posts,0);
+  return {rows, cum, plan, dim, daysPassed, lastForecast, totalLeads, totalSubs, totalPosts};
+}
+
+function lightClass(pct){ return pct>=100?'g':pct>=80?'y':'r'; }
+function lightColor(pct){ return pct>=100?'var(--green)':pct>=80?'var(--yellow)':'var(--red)'; }
+
+// ---- RENDER ----
+function render(){
+  document.getElementById('lbl_main').textContent = state.settings.metricName.includes('Заявки')?'Заявки за день':'Переходы за день';
+  document.getElementById('period').textContent = state.days.length? (state.days[0].date+' → '+state.days[state.days.length-1].date) : 'нет данных';
+  const c = calc();
+
+  // CARDS
+  const pctMonth = c.plan? Math.round((c.cum/c.plan)*100):0;
+  const fcPct = c.plan? Math.round((c.lastForecast/c.plan)*100):0;
+  const cards = [
+    {label:'План месяца', big:c.plan, meta:state.settings.metricName},
+    {label:'Факт (накопительно)', big:c.cum, meta:`${pctMonth}% плана · день ${c.daysPassed}/${c.dim}`, bar:pctMonth, barpct:pctMonth},
+    {label:'Прогноз на конец месяца', big:c.lastForecast, meta:`<span class="pill ${lightClass(fcPct)}">${fcPct}% плана</span>`, },
+    {label:'Заявки из соцсетей', big:c.totalLeads, meta:'наблюдаем · цель Метрики + «откуда узнали»'},
+    {label:'Постов / +подписчиков', big:`${c.totalPosts} / +${c.totalSubs}`, meta:'процесс (наш контроль)'},
+  ];
+  document.getElementById('cards').innerHTML = cards.map(k=>`
+    <div class="card">
+      <div class="label">${k.label}</div>
+      <div class="big">${k.big}</div>
+      <div class="meta">${k.meta||''}</div>
+      ${k.bar!==undefined?`<div class="bar"><span style="width:${Math.min(k.barpct,100)}%;background:${lightColor(k.barpct)}"></span></div>`:''}
+    </div>`).join('');
+
+  document.getElementById('forecastInline').textContent = c.lastForecast? `прогноз ${c.lastForecast} из ${c.plan} (${fcPct}%)` : '';
+
+  // TABLE
+  const tb = document.querySelector('#log tbody');
+  tb.innerHTML = c.rows.slice().reverse().map(r=>`
+    <tr>
+      <td>${r.date}</td>
+      <td>${r.main}</td>
+      <td>${r.planDay}</td>
+      <td><span class="dot" style="background:${lightColor(r.pct)}"></span> ${r.pct}%</td>
+      <td>${r.cum}</td>
+      <td>${r.remaining}</td>
+      <td>${r.forecast}</td>
+      <td>${r.leads}</td>
+      <td>${r.posts}</td>
+      <td style="text-align:left;white-space:normal;max-width:240px">${r.action||'<span class="small">—</span>'}</td>
+      <td><button class="ghost" style="padding:4px 8px;font-size:12px" onclick="delDay('${r.date}')">✕</button></td>
+    </tr>`).join('') || `<tr><td colspan="11" class="small" style="text-align:center;padding:20px">Пока нет данных — внеси первый день выше</td></tr>`;
+
+  drawChart(c);
+}
+
+// ---- CHART (vanilla canvas) ----
+function drawChart(c){
+  const cv = document.getElementById('chart');
+  const dpr = window.devicePixelRatio||1;
+  const W = cv.clientWidth, H = 200;
+  cv.width = W*dpr; cv.height = H*dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  const padL=40, padB=24, padT=10, padR=10;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const dim = c.dim;
+  const maxY = Math.max(c.plan, c.lastForecast, c.cum, 1);
+  const x = i => padL + (plotW*(i/(dim-1||1)));
+  const y = v => padT + plotH - (plotH*(v/maxY));
+
+  // grid + axis
+  ctx.strokeStyle='#27323f'; ctx.fillStyle='#8b9aa8'; ctx.font='10px sans-serif'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){
+    const val=Math.round(maxY*g/4), yy=y(val);
+    ctx.beginPath();ctx.moveTo(padL,yy);ctx.lineTo(W-padR,yy);ctx.stroke();
+    ctx.fillText(val,4,yy+3);
+  }
+  // ideal line (even pace to plan)
+  ctx.strokeStyle='#8b9aa8'; ctx.setLineDash([4,4]); ctx.beginPath();
+  ctx.moveTo(x(0),y(c.plan/dim)); ctx.lineTo(x(dim-1),y(c.plan)); ctx.stroke(); ctx.setLineDash([]);
+  // forecast line (from last point projected)
+  if(c.rows.length){
+    const last=c.rows[c.rows.length-1];
+    ctx.strokeStyle='#DB6FA0'; ctx.setLineDash([6,3]); ctx.beginPath();
+    ctx.moveTo(x(c.rows.length-1),y(last.cum)); ctx.lineTo(x(dim-1),y(c.lastForecast)); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // actual cumulative
+  ctx.strokeStyle='#45B2E6'; ctx.lineWidth=2.5; ctx.beginPath();
+  c.rows.forEach((r,i)=>{ const px=x(i),py=y(r.cum); i?ctx.lineTo(px,py):ctx.moveTo(px,py); });
+  ctx.stroke();
+  c.rows.forEach((r,i)=>{ ctx.fillStyle='#45B2E6'; ctx.beginPath(); ctx.arc(x(i),y(r.cum),3,0,7); ctx.fill(); });
+}
+
+window.addEventListener('resize',()=>{ if(document.getElementById('app').style.display!=='none') render(); });
+
+// ---- EXPORT ----
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='kpi-vorotnikov-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+</script>
+</body>
+</html>
