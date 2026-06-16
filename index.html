@@ -60,6 +60,13 @@
   .actions{font-size:13px;line-height:1.6}
   .legend{font-size:12px;color:var(--muted);margin-top:8px}
   .legend b{color:var(--text)}
+  /* TABS */
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .tab{padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;user-select:none}
+  .tab:hover{color:var(--text)}
+  .tab.active{background:var(--accent);color:#06222e;border-color:var(--accent)}
+  .tab.all{border-color:var(--accent2)}
+  .tab.all.active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
   /* FUNNEL */
   .fstep{display:flex;align-items:center;gap:14px;margin-bottom:10px}
   .fstep .fnum{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:#0d141c;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted)}
@@ -116,12 +123,15 @@
     </div>
   </div>
 
+  <!-- PLATFORM TABS -->
+  <div class="tabs" id="tabs"></div>
+
   <!-- KPI CARDS -->
   <div class="grid" id="cards"></div>
 
   <!-- FUNNEL -->
   <div class="panel">
-    <h3>Воронка из соцсетей — до реальных пациентов <span class="small">(деньги приносят консультации и операции, а не клики)</span></h3>
+    <h3>Воронка <span id="funnelScope" style="color:var(--accent)"></span> — до реальных пациентов <span class="small">(деньги приносят консультации и операции, а не клики)</span></h3>
     <div id="funnel"></div>
   </div>
 
@@ -137,6 +147,7 @@
     <h3>Внести день</h3>
     <div class="small" style="margin-bottom:10px">Воронка из соцсетей по дням. Ступени 1–2 берём из Метрики, ступени 3–5 — от администратора/врача (кто реально дошёл).</div>
     <div class="row">
+      <div><label>Площадка</label><select id="d_platform"></select></div>
       <div><label>Дата</label><input type="date" id="d_date"></div>
       <div><label id="lbl_main">1 · Переходы на сайт</label><input type="number" id="d_main" placeholder="0"></div>
       <div><label>2 · Заявки / звонки</label><input type="number" id="d_leads" placeholder="0"></div>
@@ -162,7 +173,7 @@
     <div class="scroll">
       <table id="log">
         <thead><tr>
-          <th>Дата</th><th>Перех.</th><th>План дня</th><th>% дня</th><th>Накоп.</th><th>Forecast</th><th>Заявки</th><th>Записи</th><th>Консульт.</th><th>Опер.</th><th>Action point</th><th></th>
+          <th>Дата</th><th id="th_plat">Площадка</th><th>Перех.</th><th>План дня</th><th>% дня</th><th>Накоп.</th><th>Forecast</th><th>Заявки</th><th>Записи</th><th>Консульт.</th><th>Опер.</th><th>Action point</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -189,18 +200,48 @@
 <script>
 // ---- CONFIG ----
 const PASSWORD = "vorotnikov2026";   // смени на свой
-const KEY = "kpi_vorotnikov_v1";
+const KEY = "kpi_vorotnikov_v2";     // v2 = появилось поле platform
+
+// Площадки. id = utm_source. Правь список под реальные аккаунты.
+const PLATFORMS = [
+  {id:'vk',          name:'VK'},
+  {id:'ok',          name:'Одноклассники'},
+  {id:'tg',          name:'Telegram'},
+  {id:'max',         name:'MAX'},
+  {id:'ig_clinic',   name:'Instagram клиники'},
+  {id:'ig_vv_uz',    name:'Instagram В.В. (Узб.)'},
+  {id:'ig_hamidova', name:'Instagram Хамидова'},
+  {id:'ig_radiolog', name:'Instagram радиолог'},
+  {id:'youtube',     name:'YouTube'},
+];
+function platName(id){ const p=PLATFORMS.find(x=>x.id===id); return p?p.name:id; }
+
+// активная вкладка ('all' или id площадки)
+let activeTab = 'all';
 
 // ---- STATE ----
 let state = load();
 function load(){
-  try{ return JSON.parse(localStorage.getItem(KEY)) || defState(); }
+  try{
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if(s) return s;
+    // миграция со старой версии (без площадок) → всё в 'vk' по умолчанию
+    const old = JSON.parse(localStorage.getItem('kpi_vorotnikov_v1'));
+    if(old){ old.days = (old.days||[]).map(d=>({platform:d.platform||'vk', ...d})); return old; }
+    return defState();
+  }
   catch(e){ return defState(); }
 }
 function defState(){
   return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:0, daysMonth:30}, days:[] };
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+// дни активной вкладки (для расчётов); 'all' = все
+function activeDays(){
+  if(activeTab==='all') return state.days;
+  return state.days.filter(d=>d.platform===activeTab);
+}
 
 // ---- LOGIN ----
 function tryLogin(){
@@ -239,6 +280,7 @@ function saveSettings(){
 // ---- ADD / DELETE DAY ----
 function addDay(){
   const d = {
+    platform: document.getElementById('d_platform').value,
     date: document.getElementById('d_date').value,
     main: +document.getElementById('d_main').value || 0,
     leads:+document.getElementById('d_leads').value || 0,
@@ -252,18 +294,19 @@ function addDay(){
     action: document.getElementById('d_action').value.trim()
   };
   if(!d.date){ alert('Укажи дату'); return; }
-  // replace if same date exists
-  const i = state.days.findIndex(x=>x.date===d.date);
+  // ключ уникальности — дата + площадка
+  const i = state.days.findIndex(x=>x.date===d.date && x.platform===d.platform);
   if(i>=0) state.days[i]=d; else state.days.push(d);
   state.days.sort((a,b)=>a.date.localeCompare(b.date));
   save();
-  // clear inputs (keep date)
+  // после внесения переключаемся на вкладку этой площадки
+  activeTab = d.platform;
   ['d_main','d_leads','d_appt','d_consult','d_surgery','d_revenue','d_posts','d_reach','d_subs','d_action'].forEach(id=>document.getElementById(id).value='');
   render();
 }
-function delDay(date){
-  if(!confirm('Удалить день '+date+'?')) return;
-  state.days = state.days.filter(x=>x.date!==date);
+function delDay(date, platform){
+  if(!confirm('Удалить запись '+date+' · '+platName(platform)+'?')) return;
+  state.days = state.days.filter(x=>!(x.date===date && x.platform===platform));
   save(); render();
 }
 
@@ -271,21 +314,33 @@ function delDay(date){
 function calc(){
   const plan = state.settings.planMonth;
   const dim = state.settings.daysMonth;
+  const src = activeDays();
+
+  // агрегируем по дате (на вкладке «Все» одна дата встречается у разных площадок)
+  const byDate = {};
+  src.forEach(d=>{
+    const t = byDate[d.date] || (byDate[d.date] = {date:d.date, main:0,leads:0,appt:0,consult:0,surgery:0,revenue:0,posts:0,reach:0,subs:0, actions:[], platforms:[]});
+    ['main','leads','appt','consult','surgery','revenue','posts','reach','subs'].forEach(k=>t[k]+=(d[k]||0));
+    if(d.action) t.actions.push((activeTab==='all'?platName(d.platform)+': ':'')+d.action);
+    t.platforms.push(d.platform);
+  });
+  const merged = Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+  merged.forEach(m=>m.action = m.actions.join(' · '));
+
   let cum=0; const rows=[];
-  const daysPassed = state.days.length;
-  state.days.forEach((d,idx)=>{
+  const daysPassed = merged.length;
+  merged.forEach((d,idx)=>{
     cum += d.main;
     const remaining = Math.max(plan - cum, 0);
     const daysLeft = Math.max(dim - (idx+1), 0);
     const planDay = daysLeft>0 ? Math.ceil(remaining/daysLeft) : remaining;
-    // план дня для % считаем как ровный темп до текущего дня
     const evenPlanDay = plan/dim;
     const pct = evenPlanDay>0 ? Math.round((d.main/evenPlanDay)*100) : 0;
     const forecast = daysPassed>0 ? Math.round((cum/(idx+1))*dim) : 0;
     rows.push({...d, cum, remaining, planDay, pct, forecast});
   });
   const lastForecast = rows.length? rows[rows.length-1].forecast : 0;
-  const sum = k => state.days.reduce((s,d)=>s+(d[k]||0),0);
+  const sum = k => src.reduce((s,d)=>s+(d[k]||0),0);
   const totalMain = sum('main');      // 1 переходы
   const totalLeads = sum('leads');    // 2 заявки
   const totalAppt = sum('appt');      // 3 записи
@@ -299,13 +354,38 @@ function calc(){
     totalSubs, totalPosts};
 }
 
+// ---- TABS ----
+function renderTabs(){
+  const el = document.getElementById('tabs');
+  // считаем, по каким площадкам есть данные
+  const used = new Set(state.days.map(d=>d.platform));
+  let html = `<div class="tab all ${activeTab==='all'?'active':''}" onclick="setTab('all')">Все площадки</div>`;
+  PLATFORMS.forEach(p=>{
+    const has = used.has(p.id);
+    html += `<div class="tab ${activeTab===p.id?'active':''}" onclick="setTab('${p.id}')" title="${p.id}">${p.name}${has?'':' <span style="opacity:.4">·</span>'}</div>`;
+  });
+  el.innerHTML = html;
+}
+function setTab(id){ activeTab=id; render(); }
+
+// заполнить селект площадок в форме
+function fillPlatformSelect(){
+  const sel = document.getElementById('d_platform');
+  sel.innerHTML = PLATFORMS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  if(activeTab!=='all') sel.value = activeTab;
+}
+
 function lightClass(pct){ return pct>=100?'g':pct>=80?'y':'r'; }
 function lightColor(pct){ return pct>=100?'var(--green)':pct>=80?'var(--yellow)':'var(--red)'; }
 
 // ---- RENDER ----
 function render(){
+  renderTabs();
+  fillPlatformSelect();
   document.getElementById('lbl_main').textContent = state.settings.metricName.includes('Заявки')?'1 · Заявки за день':'1 · Переходы на сайт';
-  document.getElementById('period').textContent = state.days.length? (state.days[0].date+' → '+state.days[state.days.length-1].date) : 'нет данных';
+  const ad = activeDays();
+  const tabName = activeTab==='all'?'все площадки':platName(activeTab);
+  document.getElementById('period').textContent = (ad.length? (ad[0].date+' → '+ad[ad.length-1].date) : 'нет данных') + ' · ' + tabName;
   const c = calc();
 
   // CARDS — акцент на реальных пациентах
@@ -336,10 +416,13 @@ function render(){
   document.getElementById('forecastInline').textContent = c.lastForecast? `прогноз ${c.lastForecast} из ${c.plan} (${fcPct}%)` : '';
 
   // TABLE
+  const isAll = activeTab==='all';
+  document.getElementById('th_plat').style.display = isAll?'':'none';
   const tb = document.querySelector('#log tbody');
   tb.innerHTML = c.rows.slice().reverse().map(r=>`
     <tr>
       <td>${r.date}</td>
+      ${isAll?`<td style="text-align:left">${[...new Set(r.platforms)].map(platName).join(', ')}</td>`:''}
       <td>${r.main}</td>
       <td>${c.plan?r.planDay:'—'}</td>
       <td>${c.plan?`<span class="dot" style="background:${lightColor(r.pct)}"></span> ${r.pct}%`:'<span class="small">—</span>'}</td>
@@ -350,8 +433,8 @@ function render(){
       <td>${r.consult||0}</td>
       <td>${r.surgery||0}</td>
       <td style="text-align:left;white-space:normal;max-width:220px">${r.action||'<span class="small">—</span>'}</td>
-      <td><button class="ghost" style="padding:4px 8px;font-size:12px" onclick="delDay('${r.date}')">✕</button></td>
-    </tr>`).join('') || `<tr><td colspan="12" class="small" style="text-align:center;padding:20px">Пока нет данных — внеси первый день выше</td></tr>`;
+      <td>${isAll?'<span class="small">—</span>':`<button class="ghost" style="padding:4px 8px;font-size:12px" onclick="delDay('${r.date}','${activeTab}')">✕</button>`}</td>
+    </tr>`).join('') || `<tr><td colspan="13" class="small" style="text-align:center;padding:20px">Пока нет данных${isAll?'':' по этой площадке'} — внеси день выше</td></tr>`;
 
   drawChart(c);
 }
@@ -365,6 +448,7 @@ function renderFunnel(c){
     {n:4, label:'Пришли (консультации)', val:c.totalConsult, color:'#c97fb0'},
     {n:5, label:'Операции / лечение', val:c.totalSurgery, color:'#DB6FA0'},
   ];
+  document.getElementById('funnelScope').textContent = activeTab==='all'?'(все площадки)':'· '+platName(activeTab);
   const max = Math.max(...steps.map(s=>s.val), 1);
   const el = document.getElementById('funnel');
   el.innerHTML = steps.map((s,i)=>{
