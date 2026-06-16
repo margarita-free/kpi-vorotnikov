@@ -67,6 +67,12 @@
   .tab.active{background:var(--accent);color:#06222e;border-color:var(--accent)}
   .tab.all{border-color:var(--accent2)}
   .tab.all.active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+  /* LOST REASONS */
+  .lrow{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:13px}
+  .lrow .lname{flex:0 0 150px}
+  .lrow .lbarwrap{flex:1;background:#0d141c;border-radius:6px;overflow:hidden;height:22px}
+  .lrow .lbar{height:100%;background:var(--accent2);display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap}
+  .lrow .lcnt{flex:0 0 60px;text-align:right;color:var(--muted);font-size:12px}
   /* FUNNEL */
   .fstep{display:flex;align-items:center;gap:14px;margin-bottom:10px}
   .fstep .fnum{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:#0d141c;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted)}
@@ -180,6 +186,52 @@
     </div>
   </div>
 
+  <!-- LOST PATIENTS / DROP-OFF ANALYSIS -->
+  <div class="panel">
+    <h3>Почему пациенты «соскакивают» <span class="small">— анализ тех, кто не дошёл до консультации</span></h3>
+    <div class="small" style="margin-bottom:14px">Фиксируем каждого, кто оставил заявку/записался, но не пришёл. Видно, что отпугивает: цена или работа того, кто отвечает на заявки.</div>
+
+    <!-- сводка по причинам -->
+    <div class="twocol" style="margin-bottom:18px">
+      <div><div class="label" style="color:var(--muted);font-size:12px;text-transform:uppercase;margin-bottom:8px">Причины отвала</div><div id="lostReasons"></div></div>
+      <div><div class="label" style="color:var(--muted);font-size:12px;text-transform:uppercase;margin-bottom:8px">На какой стадии уходят</div><div id="lostStages"></div></div>
+    </div>
+
+    <!-- форма -->
+    <div class="row">
+      <div><label>Дата</label><input type="date" id="l_date"></div>
+      <div><label>Площадка</label><select id="l_platform"></select></div>
+      <div><label>Стадия ухода</label>
+        <select id="l_stage">
+          <option value="after_lead">Оставил заявку — не записался</option>
+          <option value="after_appt">Записался — не пришёл</option>
+        </select></div>
+      <div><label>Причина</label>
+        <select id="l_reason">
+          <option value="Цена">Цена — дорого</option>
+          <option value="Долго отвечали">Долго отвечали / не ответили</option>
+          <option value="Грубо/неадекватно">Грубо / неадекватно ответили</option>
+          <option value="Передумал">Передумал / отложил</option>
+          <option value="Другая клиника">Выбрал другую клинику</option>
+          <option value="Далеко/неудобно">Далеко / неудобно</option>
+          <option value="Не дозвонились">Не дозвонились до пациента</option>
+          <option value="Другое">Другое</option>
+        </select></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div style="grid-column:1/-1"><label>Комментарий (что именно сказал пациент)</label><input id="l_note" placeholder="напр. «дорого, в соседней клинике дешевле» / «администратор долго не перезванивал»"></div>
+    </div>
+    <div style="margin-top:12px"><button onclick="addLost()">Добавить «отвал»</button></div>
+
+    <!-- журнал отвала -->
+    <div class="scroll" style="margin-top:16px">
+      <table id="lostLog">
+        <thead><tr><th>Дата</th><th id="lth_plat">Площадка</th><th>Стадия</th><th>Причина</th><th>Комментарий</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- DAILY DISCIPLINE -->
   <div class="panel">
     <h3>3 вывода дня (метод Уколовой)</h3>
@@ -224,16 +276,16 @@ let state = load();
 function load(){
   try{
     const s = JSON.parse(localStorage.getItem(KEY));
-    if(s) return s;
+    if(s){ s.days=s.days||[]; s.lost=s.lost||[]; return s; }
     // миграция со старой версии (без площадок) → всё в 'vk' по умолчанию
     const old = JSON.parse(localStorage.getItem('kpi_vorotnikov_v1'));
-    if(old){ old.days = (old.days||[]).map(d=>({platform:d.platform||'vk', ...d})); return old; }
+    if(old){ old.days = (old.days||[]).map(d=>({platform:d.platform||'vk', ...d})); old.lost=old.lost||[]; return old; }
     return defState();
   }
   catch(e){ return defState(); }
 }
 function defState(){
-  return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:0, daysMonth:30}, days:[] };
+  return { settings:{metricName:"Переходы на сайт из соцсетей (UTM)", planMonth:0, daysMonth:30}, days:[], lost:[] };
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
 
@@ -309,6 +361,31 @@ function delDay(date, platform){
   state.days = state.days.filter(x=>!(x.date===date && x.platform===platform));
   save(); render();
 }
+
+// ---- LOST PATIENTS ----
+function addLost(){
+  const l = {
+    id: 'l'+state.lost.length+'_'+(state.lost.reduce((m,x)=>Math.max(m,x._n||0),0)+1),
+    _n: (state.lost.reduce((m,x)=>Math.max(m,x._n||0),0)+1),
+    date: document.getElementById('l_date').value,
+    platform: document.getElementById('l_platform').value,
+    stage: document.getElementById('l_stage').value,
+    reason: document.getElementById('l_reason').value,
+    note: document.getElementById('l_note').value.trim()
+  };
+  if(!l.date){ alert('Укажи дату'); return; }
+  state.lost.push(l);
+  state.lost.sort((a,b)=>a.date.localeCompare(b.date));
+  save();
+  document.getElementById('l_note').value='';
+  render();
+}
+function delLost(n){
+  if(!confirm('Удалить запись отвала?')) return;
+  state.lost = state.lost.filter(x=>x._n!==n);
+  save(); render();
+}
+const STAGE_NAME = {after_lead:'Заявка → не записался', after_appt:'Записался → не пришёл'};
 
 // ---- CALC ----
 function calc(){
@@ -437,6 +514,53 @@ function render(){
     </tr>`).join('') || `<tr><td colspan="13" class="small" style="text-align:center;padding:20px">Пока нет данных${isAll?'':' по этой площадке'} — внеси день выше</td></tr>`;
 
   drawChart(c);
+  renderLost();
+}
+
+// ---- LOST RENDER ----
+function renderLost(){
+  // заполнить селект площадок
+  const sel = document.getElementById('l_platform');
+  if(!sel.options.length){ sel.innerHTML = PLATFORMS.map(p=>`<option value="${p.id}">${p.name}</option>`).join(''); }
+  if(!document.getElementById('l_date').value){ const t=new Date(); document.getElementById('l_date').value=t.toISOString().slice(0,10); }
+
+  // фильтр по активной вкладке
+  const isAll = activeTab==='all';
+  const src = isAll ? state.lost : state.lost.filter(x=>x.platform===activeTab);
+
+  // сводка по причинам
+  const byReason = {};
+  src.forEach(x=>byReason[x.reason]=(byReason[x.reason]||0)+1);
+  const reasons = Object.entries(byReason).sort((a,b)=>b[1]-a[1]);
+  const maxR = Math.max(...reasons.map(r=>r[1]),1);
+  document.getElementById('lostReasons').innerHTML = reasons.length? reasons.map(([name,cnt])=>`
+    <div class="lrow"><div class="lname">${name}</div>
+      <div class="lbarwrap"><div class="lbar" style="width:${Math.max((cnt/maxR)*100,12)}%">${cnt}</div></div>
+      <div class="lcnt">${Math.round((cnt/src.length)*100)}%</div></div>`).join('')
+    : '<div class="small">Пока нет данных об отвалах</div>';
+
+  // сводка по стадиям
+  const byStage = {after_lead:0, after_appt:0};
+  src.forEach(x=>byStage[x.stage]=(byStage[x.stage]||0)+1);
+  const maxS = Math.max(byStage.after_lead, byStage.after_appt, 1);
+  document.getElementById('lostStages').innerHTML = src.length? ['after_lead','after_appt'].map(st=>`
+    <div class="lrow"><div class="lname">${STAGE_NAME[st]}</div>
+      <div class="lbarwrap"><div class="lbar" style="width:${Math.max((byStage[st]/maxS)*100,12)}%;background:${st==='after_lead'?'#9b8fc4':'#c97fb0'}">${byStage[st]}</div></div>
+      <div class="lcnt">${Math.round((byStage[st]/src.length)*100)}%</div></div>`).join('')
+    : '<div class="small">—</div>';
+
+  // журнал отвала
+  document.getElementById('lth_plat').style.display = isAll?'':'none';
+  const tb = document.querySelector('#lostLog tbody');
+  tb.innerHTML = src.slice().reverse().map(x=>`
+    <tr>
+      <td>${x.date}</td>
+      ${isAll?`<td style="text-align:left">${platName(x.platform)}</td>`:''}
+      <td style="text-align:left">${STAGE_NAME[x.stage]||x.stage}</td>
+      <td style="text-align:left">${x.reason}</td>
+      <td style="text-align:left;white-space:normal;max-width:280px">${x.note||'<span class="small">—</span>'}</td>
+      <td><button class="ghost" style="padding:4px 8px;font-size:12px" onclick="delLost(${x._n})">✕</button></td>
+    </tr>`).join('') || `<tr><td colspan="${isAll?6:5}" class="small" style="text-align:center;padding:16px">Нет записей${isAll?'':' по этой площадке'}</td></tr>`;
 }
 
 // ---- FUNNEL ----
