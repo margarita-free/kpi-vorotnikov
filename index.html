@@ -60,6 +60,15 @@
   .actions{font-size:13px;line-height:1.6}
   .legend{font-size:12px;color:var(--muted);margin-top:8px}
   .legend b{color:var(--text)}
+  /* FUNNEL */
+  .fstep{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+  .fstep .fnum{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:#0d141c;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted)}
+  .fstep .fbarwrap{flex:1;background:#0d141c;border-radius:8px;overflow:hidden;height:38px;position:relative}
+  .fstep .fbar{height:100%;display:flex;align-items:center;padding:0 12px;font-weight:700;color:#06222e;min-width:fit-content;white-space:nowrap;transition:width .3s}
+  .fstep .flabel{flex:0 0 190px;font-size:13px}
+  .fstep .fconv{flex:0 0 86px;text-align:right;font-size:12px;color:var(--muted)}
+  .fstep .fconv b{color:var(--text)}
+  @media(max-width:680px){.fstep .flabel{flex-basis:120px;font-size:12px}.fstep .fconv{flex-basis:56px}}
 </style>
 </head>
 <body>
@@ -110,6 +119,12 @@
   <!-- KPI CARDS -->
   <div class="grid" id="cards"></div>
 
+  <!-- FUNNEL -->
+  <div class="panel">
+    <h3>Воронка из соцсетей — до реальных пациентов <span class="small">(деньги приносят консультации и операции, а не клики)</span></h3>
+    <div id="funnel"></div>
+  </div>
+
   <!-- CHART -->
   <div class="panel">
     <h3>Накопительный темп vs план <span class="small" id="forecastInline"></span></h3>
@@ -120,13 +135,20 @@
   <!-- ADD DAY -->
   <div class="panel">
     <h3>Внести день</h3>
+    <div class="small" style="margin-bottom:10px">Воронка из соцсетей по дням. Ступени 1–2 берём из Метрики, ступени 3–5 — от администратора/врача (кто реально дошёл).</div>
     <div class="row">
       <div><label>Дата</label><input type="date" id="d_date"></div>
-      <div><label id="lbl_main">Переходы за день</label><input type="number" id="d_main" placeholder="0"></div>
-      <div><label>Заявки за день</label><input type="number" id="d_leads" placeholder="0"></div>
+      <div><label id="lbl_main">1 · Переходы на сайт</label><input type="number" id="d_main" placeholder="0"></div>
+      <div><label>2 · Заявки / звонки</label><input type="number" id="d_leads" placeholder="0"></div>
+      <div><label>3 · Записи на приём</label><input type="number" id="d_appt" placeholder="0"></div>
+      <div><label>4 · Пришли (консультации)</label><input type="number" id="d_consult" placeholder="0"></div>
+      <div><label>5 · Операции / лечение</label><input type="number" id="d_surgery" placeholder="0"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
       <div><label>Постов</label><input type="number" id="d_posts" placeholder="0"></div>
       <div><label>Охват</label><input type="number" id="d_reach" placeholder="0"></div>
       <div><label>+ подписчиков</label><input type="number" id="d_subs" placeholder="0"></div>
+      <div><label>Выручка от этих пациентов, ₽ (опц.)</label><input type="number" id="d_revenue" placeholder="0"></div>
     </div>
     <div class="row" style="margin-top:10px">
       <div style="grid-column:1/-1"><label>Action point на завтра (1 ключевое действие)</label><input id="d_action" placeholder="напр. закрепить пост с оффером + ссылкой на запись"></div>
@@ -140,7 +162,7 @@
     <div class="scroll">
       <table id="log">
         <thead><tr>
-          <th>Дата</th><th>Факт дня</th><th>План дня</th><th>% дня</th><th>Накоп.</th><th>Остаток</th><th>Forecast</th><th>Заявки</th><th>Посты</th><th>Action point</th><th></th>
+          <th>Дата</th><th>Перех.</th><th>План дня</th><th>% дня</th><th>Накоп.</th><th>Forecast</th><th>Заявки</th><th>Записи</th><th>Консульт.</th><th>Опер.</th><th>Action point</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -220,6 +242,10 @@ function addDay(){
     date: document.getElementById('d_date').value,
     main: +document.getElementById('d_main').value || 0,
     leads:+document.getElementById('d_leads').value || 0,
+    appt:+document.getElementById('d_appt').value || 0,
+    consult:+document.getElementById('d_consult').value || 0,
+    surgery:+document.getElementById('d_surgery').value || 0,
+    revenue:+document.getElementById('d_revenue').value || 0,
     posts:+document.getElementById('d_posts').value || 0,
     reach:+document.getElementById('d_reach').value || 0,
     subs: +document.getElementById('d_subs').value || 0,
@@ -232,7 +258,7 @@ function addDay(){
   state.days.sort((a,b)=>a.date.localeCompare(b.date));
   save();
   // clear inputs (keep date)
-  ['d_main','d_leads','d_posts','d_reach','d_subs','d_action'].forEach(id=>document.getElementById(id).value='');
+  ['d_main','d_leads','d_appt','d_consult','d_surgery','d_revenue','d_posts','d_reach','d_subs','d_action'].forEach(id=>document.getElementById(id).value='');
   render();
 }
 function delDay(date){
@@ -259,10 +285,18 @@ function calc(){
     rows.push({...d, cum, remaining, planDay, pct, forecast});
   });
   const lastForecast = rows.length? rows[rows.length-1].forecast : 0;
-  const totalLeads = state.days.reduce((s,d)=>s+d.leads,0);
-  const totalSubs = state.days.reduce((s,d)=>s+d.subs,0);
-  const totalPosts = state.days.reduce((s,d)=>s+d.posts,0);
-  return {rows, cum, plan, dim, daysPassed, lastForecast, totalLeads, totalSubs, totalPosts};
+  const sum = k => state.days.reduce((s,d)=>s+(d[k]||0),0);
+  const totalMain = sum('main');      // 1 переходы
+  const totalLeads = sum('leads');    // 2 заявки
+  const totalAppt = sum('appt');      // 3 записи
+  const totalConsult = sum('consult');// 4 консультации
+  const totalSurgery = sum('surgery');// 5 операции
+  const totalRevenue = sum('revenue');
+  const totalSubs = sum('subs');
+  const totalPosts = sum('posts');
+  return {rows, cum, plan, dim, daysPassed, lastForecast,
+    totalMain, totalLeads, totalAppt, totalConsult, totalSurgery, totalRevenue,
+    totalSubs, totalPosts};
 }
 
 function lightClass(pct){ return pct>=100?'g':pct>=80?'y':'r'; }
@@ -270,19 +304,23 @@ function lightColor(pct){ return pct>=100?'var(--green)':pct>=80?'var(--yellow)'
 
 // ---- RENDER ----
 function render(){
-  document.getElementById('lbl_main').textContent = state.settings.metricName.includes('Заявки')?'Заявки за день':'Переходы за день';
+  document.getElementById('lbl_main').textContent = state.settings.metricName.includes('Заявки')?'1 · Заявки за день':'1 · Переходы на сайт';
   document.getElementById('period').textContent = state.days.length? (state.days[0].date+' → '+state.days[state.days.length-1].date) : 'нет данных';
   const c = calc();
 
-  // CARDS
+  // CARDS — акцент на реальных пациентах
   const pctMonth = c.plan? Math.round((c.cum/c.plan)*100):0;
   const fcPct = c.plan? Math.round((c.lastForecast/c.plan)*100):0;
+  const cpp = c.totalConsult? Math.round(c.totalRevenue/c.totalConsult):0;
   const cards = [
-    {label:'План месяца', big:c.plan, meta:state.settings.metricName},
-    {label:'Факт (накопительно)', big:c.cum, meta:`${pctMonth}% плана · день ${c.daysPassed}/${c.dim}`, bar:pctMonth, barpct:pctMonth},
-    {label:'Прогноз на конец месяца', big:c.lastForecast, meta:`<span class="pill ${lightClass(fcPct)}">${fcPct}% плана</span>`, },
-    {label:'Заявки из соцсетей', big:c.totalLeads, meta:'наблюдаем · цель Метрики + «откуда узнали»'},
-    {label:'Постов / +подписчиков', big:`${c.totalPosts} / +${c.totalSubs}`, meta:'процесс (наш контроль)'},
+    {label:'Факт (накопительно) · '+(state.settings.metricName.includes('Заявки')?'заявки':'переходы'), big:c.cum,
+      meta: c.plan? `${pctMonth}% плана · прогноз ${c.lastForecast} (${fcPct}%)` : `план не задан · день ${c.daysPassed}/${c.dim}`,
+      bar: c.plan?pctMonth:undefined, barpct:pctMonth},
+    {label:'Заявки из соцсетей', big:c.totalLeads, meta:'ступень 2 · Метрика + «откуда узнали»'},
+    {label:'⭐ Пришли на консультацию', big:c.totalConsult, meta:'ступень 4 · реальные пациенты'},
+    {label:'⭐ Операции / лечение', big:c.totalSurgery, meta:'ступень 5 · итоговый результат'},
+    {label:'Выручка с этих пациентов', big:c.totalRevenue? c.totalRevenue.toLocaleString('ru')+' ₽':'—',
+      meta: cpp? `≈ ${cpp.toLocaleString('ru')} ₽ за консультацию`:'опционально'},
   ];
   document.getElementById('cards').innerHTML = cards.map(k=>`
     <div class="card">
@@ -292,6 +330,9 @@ function render(){
       ${k.bar!==undefined?`<div class="bar"><span style="width:${Math.min(k.barpct,100)}%;background:${lightColor(k.barpct)}"></span></div>`:''}
     </div>`).join('');
 
+  // FUNNEL
+  renderFunnel(c);
+
   document.getElementById('forecastInline').textContent = c.lastForecast? `прогноз ${c.lastForecast} из ${c.plan} (${fcPct}%)` : '';
 
   // TABLE
@@ -300,18 +341,43 @@ function render(){
     <tr>
       <td>${r.date}</td>
       <td>${r.main}</td>
-      <td>${r.planDay}</td>
-      <td><span class="dot" style="background:${lightColor(r.pct)}"></span> ${r.pct}%</td>
+      <td>${c.plan?r.planDay:'—'}</td>
+      <td>${c.plan?`<span class="dot" style="background:${lightColor(r.pct)}"></span> ${r.pct}%`:'<span class="small">—</span>'}</td>
       <td>${r.cum}</td>
-      <td>${r.remaining}</td>
       <td>${r.forecast}</td>
       <td>${r.leads}</td>
-      <td>${r.posts}</td>
-      <td style="text-align:left;white-space:normal;max-width:240px">${r.action||'<span class="small">—</span>'}</td>
+      <td>${r.appt||0}</td>
+      <td>${r.consult||0}</td>
+      <td>${r.surgery||0}</td>
+      <td style="text-align:left;white-space:normal;max-width:220px">${r.action||'<span class="small">—</span>'}</td>
       <td><button class="ghost" style="padding:4px 8px;font-size:12px" onclick="delDay('${r.date}')">✕</button></td>
-    </tr>`).join('') || `<tr><td colspan="11" class="small" style="text-align:center;padding:20px">Пока нет данных — внеси первый день выше</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="12" class="small" style="text-align:center;padding:20px">Пока нет данных — внеси первый день выше</td></tr>`;
 
   drawChart(c);
+}
+
+// ---- FUNNEL ----
+function renderFunnel(c){
+  const steps = [
+    {n:1, label:'Переходы на сайт', val:c.totalMain, color:'#45B2E6'},
+    {n:2, label:'Заявки / звонки', val:c.totalLeads, color:'#5fb0d8'},
+    {n:3, label:'Записи на приём', val:c.totalAppt, color:'#9b8fc4'},
+    {n:4, label:'Пришли (консультации)', val:c.totalConsult, color:'#c97fb0'},
+    {n:5, label:'Операции / лечение', val:c.totalSurgery, color:'#DB6FA0'},
+  ];
+  const max = Math.max(...steps.map(s=>s.val), 1);
+  const el = document.getElementById('funnel');
+  el.innerHTML = steps.map((s,i)=>{
+    const w = Math.max((s.val/max)*100, s.val>0?6:2);
+    const prev = i>0? steps[i-1].val : null;
+    const conv = (prev && prev>0) ? Math.round((s.val/prev)*100)+'%' : (i===0?'—':'—');
+    return `<div class="fstep">
+      <div class="fnum">${s.n}</div>
+      <div class="flabel">${s.label}</div>
+      <div class="fbarwrap"><div class="fbar" style="width:${w}%;background:${s.color}">${s.val}</div></div>
+      <div class="fconv">${i>0?`→ <b>${conv}</b>`:'<span class="small">старт</span>'}</div>
+    </div>`;
+  }).join('') + `<div class="small" style="margin-top:6px">→ % = конверсия из предыдущей ступени. Ступени 3–5 заполняет администратор/врач — без них видны только клики, а не реальные пациенты.</div>`;
 }
 
 // ---- CHART (vanilla canvas) ----
