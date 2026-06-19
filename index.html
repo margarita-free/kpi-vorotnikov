@@ -256,15 +256,12 @@ const KEY = "kpi_vorotnikov_v2";     // v2 = появилось поле platfor
 
 // Площадки. id = utm_source. Правь список под реальные аккаунты.
 const PLATFORMS = [
-  {id:'vk',          name:'VK'},
-  {id:'ok',          name:'Одноклассники'},
-  {id:'tg',          name:'Telegram'},
-  {id:'max',         name:'MAX'},
-  {id:'ig_clinic',   name:'Instagram клиники'},
-  {id:'ig_vv_uz',    name:'Instagram В.В. (Узб.)'},
-  {id:'ig_hamidova', name:'Instagram Хамидова'},
-  {id:'ig_radiolog', name:'Instagram радиолог'},
-  {id:'youtube',     name:'YouTube'},
+  {id:'vk',            name:'VK'},
+  {id:'tg_mastopathy', name:'Telegram'},
+  {id:'max_oncosfera', name:'MAX (oncosfera)'},
+  {id:'ig_khamidova',  name:'IG Хамидова'},
+  {id:'ig_mclinic',    name:'IG клиника (mclinic_uz)'},
+  {id:'ig_chen',       name:'IG Чен'},
 ];
 function platName(id){ const p=PLATFORMS.find(x=>x.id===id); return p?p.name:id; }
 
